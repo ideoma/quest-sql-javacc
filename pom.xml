@@ -22,17 +22,19 @@
                 <version>4.1.4</version>
                 <executions>
                     <execution>
-                        <id>myparser</id>
-                        <phase>generate-sources</phase>
                         <goals>
-                            <goal>javacc</goal>
+                            <goal>jjtree-javacc</goal>
                         </goals>
-                        <configuration>
-                            <sourceDirectory>src/main/java/grammar</sourceDirectory>
-                            <outputDirectory>src/main/java</outputDirectory>
-                        </configuration>
                     </execution>
                 </executions>
+                <configuration>
+                    <jdkVersion>1.8</jdkVersion>
+                    <javadocFriendlyComments>true</javadocFriendlyComments>
+                    <!-- The modern template is quicker! -->
+                    <javaTemplateType>modern</javaTemplateType>
+                    <sourceDirectory>src/main/java/grammar</sourceDirectory>
+                    <outputDirectory>src/main/java</outputDirectory>
+                </configuration>
             </plugin>
         </plugins>
     </build>

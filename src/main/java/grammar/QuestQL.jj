@@ -8,9 +8,9 @@ Options
 
 */
 options{
-    STATIC=false ;
-    IGNORE_CASE=true ;
-    JAVA_TEMPLATE_TYPE="modern";
+    MULTI=true;
+    NODE_DEFAULT_VOID=true;
+    JAVA_TEMPLATE_TYPE="modern" ;
 //  DEBUG_LOOKAHEAD= true ;
 }
 
@@ -27,13 +27,9 @@ import io.questdb.std.ObjectPool;
 
 public class Parser
 {
-  ObjectPool<ExpressionNode> sqlNodePool;
-  public Parser() {
-    this.sqlNodePool = new ObjectPool<>(ExpressionNode.FACTORY, 100);
-  }
+  private ObjectPool<ExpressionNode> sqlNodePool = new ObjectPool<ExpressionNode>(ExpressionNode.FACTORY, 100);
 
-  public static ExpressionNode parse(String args) throws Exception
-  {
+  public static ExpressionNode parse(String args) throws Exception {
     Parser parse = new Parser(new java.io.StringReader(args));
     ExpressionNode rst = parse.SQLStatement();
     return rst;
@@ -41,6 +37,9 @@ public class Parser
 
   public ExpressionNode collapseFunctionRightLeft(CharSequence name, ExpressionNode r, ExpressionNode l, Token token) {
     ExpressionNode parent = sqlNodePool.next().of(ExpressionNode.FUNCTION, name, Integer.MIN_VALUE, token.beginColumn);
+    parent.rhs = r;
+    parent.lhs = l;
+    return parent;
   }
 }
 
@@ -170,19 +169,15 @@ ExpressionNode BasicDataTypeDefinition():
     |   "LONG256"
 }
 
-ExpressionNode SQLStatement():
-{ExpressionNode e;}
+void SQLStatement():
+{}
 {
-    e = InsertStatement() {
-        return e;
-    }
+    InsertStatement()
     |
-    e = QueryStatement() {
-        return e;
-    }
+    QueryStatement()
 }
 
-ExpressionNode InsertStatement():
+void InsertStatement():
 {}
 {
     "INSERT" "INTO" TableName()
@@ -193,15 +188,15 @@ ExpressionNode InsertStatement():
     ";"
 }
 
-ExpressionNode QueryStatement():
+void QueryStatement():
 {}
 {
     SelectStatement()
     ";"
 }
 
-ExpressionNode SqlExpression():
-{ExpressionNode r, l;}
+void SqlExpression():
+{}
 {
     r = SqlAndExpression() ("OR" l = SqlAndExpression() {
         ExpressionNode r1 = sqlNodePool.next().of(ExpressionNode.FUNCTION, "OR", Integer.MIN_VALUE, token.beginColumn);
@@ -209,7 +204,7 @@ ExpressionNode SqlExpression():
         r1.lhs = l;
         r = r1;
     })*
-    { return r; }
+    { return jjtThis; }
 }
 
 ExpressionNode SqlAndExpression():
@@ -310,6 +305,22 @@ ExpressionNode SqlPrimaryExpression():
   | LOOKAHEAD(2) (<S_IDENTIFIER> | "SQL") "%" ID("FOUND|NOTFOUND|ISOPEN|ROWCOUNT")
   | LOOKAHEAD(FunctionReference() "(") FunctionCall()
   | ObjectReference() // Might be a call to a parameter-less function.
+}
+
+ExpressionNode SqlCaseExpression():
+{}
+{
+    "CASE" (SqlSimpleExpression() ("WHEN" SqlSimpleExpression() "THEN" SqlSimpleExpression())*
+            | ("WHEN" SqlExpression() "THEN" SqlSimpleExpression())*
+           )
+    ["ELSE" SqlSimpleExpression()]
+    "END"
+}
+
+void SqlCastExpression():
+{}
+{
+    "CAST" "(" SqlExpression() "AS" BasicDataTypeDefinition() ")"
 }
 
 ExpressionNode TableColumn():
