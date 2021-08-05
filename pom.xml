@@ -38,6 +38,12 @@
     </build>
 
     <dependencies>
+        <!-- https://mvnrepository.com/artifact/org.questdb/questdb -->
+        <dependency>
+            <groupId>org.questdb</groupId>
+            <artifactId>questdb</artifactId>
+            <version>6.0.4</version>
+        </dependency>
         <dependency>
             <groupId>net.java.dev.javacc</groupId>
             <artifactId>javacc</artifactId>

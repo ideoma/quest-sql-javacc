@@ -11,29 +11,123 @@ public interface ParserConstants {
   /** End of File. */
   int EOF = 0;
   /** RegularExpression Id. */
-  int SELECT = 5;
+  int K_ALL = 5;
   /** RegularExpression Id. */
-  int FROM = 6;
+  int K_ALTER = 6;
   /** RegularExpression Id. */
-  int WHERE = 7;
+  int K_AND = 7;
   /** RegularExpression Id. */
-  int AND = 8;
+  int K_ANY = 8;
   /** RegularExpression Id. */
-  int OPEN_PAR = 9;
+  int K_AS = 9;
   /** RegularExpression Id. */
-  int CLOSE_PAR = 10;
+  int K_ASC = 10;
   /** RegularExpression Id. */
-  int DOT = 11;
+  int K_BEGIN = 11;
   /** RegularExpression Id. */
-  int COMMA = 12;
+  int K_BETWEEN = 12;
   /** RegularExpression Id. */
-  int QUO = 13;
+  int K_BOOLEAN = 13;
   /** RegularExpression Id. */
-  int OPERATOR = 14;
+  int K_BY = 14;
   /** RegularExpression Id. */
-  int DIGITS = 15;
+  int K_CACHE = 15;
   /** RegularExpression Id. */
-  int NAME = 16;
+  int K_CASE = 16;
+  /** RegularExpression Id. */
+  int K_CAST = 17;
+  /** RegularExpression Id. */
+  int K_CHAR = 18;
+  /** RegularExpression Id. */
+  int K_CAPACITY = 19;
+  /** RegularExpression Id. */
+  int K_DATE = 20;
+  /** RegularExpression Id. */
+  int K_DESC = 21;
+  /** RegularExpression Id. */
+  int K_DISTINCT = 22;
+  /** RegularExpression Id. */
+  int K_DOUBLE = 23;
+  /** RegularExpression Id. */
+  int K_ELSE = 24;
+  /** RegularExpression Id. */
+  int K_END = 25;
+  /** RegularExpression Id. */
+  int K_FLOAT = 26;
+  /** RegularExpression Id. */
+  int K_FROM = 27;
+  /** RegularExpression Id. */
+  int K_FULL = 28;
+  /** RegularExpression Id. */
+  int K_IN = 29;
+  /** RegularExpression Id. */
+  int K_INDEX = 30;
+  /** RegularExpression Id. */
+  int K_INNER = 31;
+  /** RegularExpression Id. */
+  int K_INTEGER = 32;
+  /** RegularExpression Id. */
+  int K_INTO = 33;
+  /** RegularExpression Id. */
+  int K_IS = 34;
+  /** RegularExpression Id. */
+  int K_LEFT = 35;
+  /** RegularExpression Id. */
+  int K_LIKE = 36;
+  /** RegularExpression Id. */
+  int K_NOCACHE = 37;
+  /** RegularExpression Id. */
+  int K_NOT = 38;
+  /** RegularExpression Id. */
+  int K_NULL = 39;
+  /** RegularExpression Id. */
+  int K_OR = 40;
+  /** RegularExpression Id. */
+  int K_ORDER = 41;
+  /** RegularExpression Id. */
+  int K_PARTITION = 42;
+  /** RegularExpression Id. */
+  int K_SAMPLE = 43;
+  /** RegularExpression Id. */
+  int K_SELECT = 44;
+  /** RegularExpression Id. */
+  int K_SET = 45;
+  /** RegularExpression Id. */
+  int K_TABLE = 46;
+  /** RegularExpression Id. */
+  int K_UNION = 47;
+  /** RegularExpression Id. */
+  int K_VALUES = 48;
+  /** RegularExpression Id. */
+  int K_STRING = 49;
+  /** RegularExpression Id. */
+  int K_WHERE = 50;
+  /** RegularExpression Id. */
+  int K_WITH = 51;
+  /** RegularExpression Id. */
+  int S_NUMBER = 52;
+  /** RegularExpression Id. */
+  int FLOAT = 53;
+  /** RegularExpression Id. */
+  int INTEGER = 54;
+  /** RegularExpression Id. */
+  int DIGIT = 55;
+  /** RegularExpression Id. */
+  int LINE_COMMENT = 56;
+  /** RegularExpression Id. */
+  int MULTI_LINE_COMMENT = 57;
+  /** RegularExpression Id. */
+  int S_IDENTIFIER = 58;
+  /** RegularExpression Id. */
+  int LETTER = 59;
+  /** RegularExpression Id. */
+  int SPECIAL_CHARS = 60;
+  /** RegularExpression Id. */
+  int S_BIND = 61;
+  /** RegularExpression Id. */
+  int S_CHAR_LITERAL = 62;
+  /** RegularExpression Id. */
+  int S_QUOTED_IDENTIFIER = 63;
 
   /** Lexical state. */
   int DEFAULT = 0;
@@ -45,18 +139,118 @@ public interface ParserConstants {
     "\"\\t\"",
     "\"\\r\"",
     "\"\\n\"",
-    "\"SELECT\"",
-    "\"FROM\"",
-    "\"WHERE\"",
+    "\"ALL\"",
+    "\"ALTER\"",
     "\"AND\"",
+    "\"ANY\"",
+    "\"AS\"",
+    "\"ASC\"",
+    "\"BEGIN\"",
+    "\"BETWEEN\"",
+    "\"BOOLEAN\"",
+    "\"BY\"",
+    "\"CACHE\"",
+    "\"CASE\"",
+    "\"CAST\"",
+    "\"CHAR\"",
+    "\"CAPACITY\"",
+    "\"DATE\"",
+    "\"DESC\"",
+    "\"DISTINCT\"",
+    "\"DOUBLE\"",
+    "\"ELSE\"",
+    "\"END\"",
+    "\"FLOAT\"",
+    "\"FROM\"",
+    "\"FULL\"",
+    "\"IN\"",
+    "\"INDEX\"",
+    "\"INNER\"",
+    "\"INTEGER\"",
+    "\"INTO\"",
+    "\"IS\"",
+    "\"LEFT\"",
+    "\"LIKE\"",
+    "\"NOCACHE\"",
+    "\"NOT\"",
+    "\"NULL\"",
+    "\"OR\"",
+    "\"ORDER\"",
+    "\"PARTITION\"",
+    "\"SAMPLE\"",
+    "\"SELECT\"",
+    "\"SET\"",
+    "\"TABLE\"",
+    "\"UNION\"",
+    "\"VALUES\"",
+    "\"STRING\"",
+    "\"WHERE\"",
+    "\"WITH\"",
+    "<S_NUMBER>",
+    "<FLOAT>",
+    "<INTEGER>",
+    "<DIGIT>",
+    "<LINE_COMMENT>",
+    "<MULTI_LINE_COMMENT>",
+    "<S_IDENTIFIER>",
+    "<LETTER>",
+    "<SPECIAL_CHARS>",
+    "<S_BIND>",
+    "<S_CHAR_LITERAL>",
+    "<S_QUOTED_IDENTIFIER>",
+    "\"$\"",
+    "\"BYTE\"",
+    "\"SHORT\"",
+    "\"INT\"",
+    "\"SYMBOL\"",
+    "\"LONG\"",
+    "\"TIMESTAMP\"",
+    "\"BINARY\"",
+    "\"LONG256\"",
+    "\"INSERT\"",
     "\"(\"",
-    "\")\"",
-    "\".\"",
     "\",\"",
-    "\"\\\"\"",
-    "<OPERATOR>",
-    "<DIGITS>",
-    "<NAME>",
+    "\")\"",
+    "\";\"",
+    "\"+\"",
+    "\"-\"",
+    "\"||\"",
+    "\"*\"",
+    "\"/\"",
+    "\"SQL\"",
+    "\"%\"",
+    "\".\"",
+    "\"=\"",
+    "\"!\"",
+    "\"#\"",
+    "\">\"",
+    "\"<\"",
+    "\"@\"",
+    "\"OUT\"",
+    "\":=\"",
+    "\"DEFAULT\"",
+    "\"=>\"",
+    "\"INTERSECT\"",
+    "\"MINUS\"",
+    "\"UNIQUE\"",
+    "\".*\"",
+    "\"RETURNING\"",
+    "\"WHEN\"",
+    "\"OVER\"",
+    "\"ROWS\"",
+    "\"RANGE\"",
+    "\"CURRENT\"",
+    "\"ROW\"",
+    "\"ONLY\"",
+    "\"PX_GRANULE\"",
+    "\"ON\"",
+    "\"RIGHT\"",
+    "\"NULLS\"",
+    "\"EXISTS\"",
+    "\"PRIOR\"",
+    "\"ESCAPE\"",
+    "\"THEN\"",
+    "\"TO\"",
   };
 
 }
