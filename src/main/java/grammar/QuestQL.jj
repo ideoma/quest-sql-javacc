@@ -24,10 +24,13 @@ package parse;
 
 import io.questdb.griffin.model.ExpressionNode;
 import io.questdb.std.ObjectPool;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 public class Parser
 {
   private ObjectPool<ExpressionNode> sqlNodePool = new ObjectPool<ExpressionNode>(ExpressionNode.FACTORY, 100);
+  private final Deque<ExpressionNode> stack = new ArrayDeque<>();
 
   public static ExpressionNode parse(String args) throws Exception {
     Parser parse = new Parser(new java.io.StringReader(args));
@@ -169,18 +172,19 @@ ExpressionNode BasicDataTypeDefinition():
     |   "LONG256"
 }
 
-void SQLStatement():
+ExpressionNode SQLStatement():
 {}
 {
-    InsertStatement()
+    e = InsertStatement()
     |
-    QueryStatement()
+    e = QueryStatement()
+    { return e; }
 }
 
 void InsertStatement():
 {}
 {
-    "INSERT" "INTO" TableName()
+    "INSERT" "INTO" TableName() {}
      [ LOOKAHEAD(2) "(" TableColumn() ("," TableColumn())* ")" ]
     ( "VALUES" "(" SqlExpressionList() ")"
       | SubQuery()
@@ -188,11 +192,12 @@ void InsertStatement():
     ";"
 }
 
-void QueryStatement():
-{}
+ExpressionNode QueryStatement():
+{ExpressionNode e;}
 {
-    SelectStatement()
+    e = SelectStatement()
     ";"
+    {return e;}
 }
 
 void SqlExpression():
@@ -332,8 +337,12 @@ ExpressionNode TableColumn():
 ExpressionNode ObjectName():
 {}
 {
-    <S_IDENTIFIER>        {return this.sqlNodePool.expressionNodePool.next().of(ExpressionNode.LITERAL, token.image, token.beginColumn);}
-  | <S_QUOTED_IDENTIFIER> {return this.sqlNodePool.expressionNodePool.next().of(ExpressionNode.LITERAL, token.image.substring(1, token.image.length() - 1));}
+    <S_IDENTIFIER>          {
+        return nextOf(ExpressionNode.LITERAL, token.image, token.beginColumn);
+    }
+    | <S_QUOTED_IDENTIFIER> {
+        return nextOf(ExpressionNode.LITERAL, token.image, token.beginColumn);
+    }
 }
 
 CharSequence TNSName():
@@ -361,13 +370,12 @@ ExpressionNode Relop():
 
 ExpressionNode TableName():
 {
-    CharSequence s;
+    ExpressionNode e;
 }
 {
-    // schema.table@link
-    s=ObjectName()       {name.append(s);}
-    [ "." s=ObjectName() {name.append(".").append(s);} ]
-    [ "@" s=TNSName()          {name.append("@").append(s);} ]
+    // table
+    e=ObjectName()
+    { return e; }
 }
 
 ExpressionNode ParameterList():
@@ -402,34 +410,38 @@ ExpressionNode Argument():
 }
 
 ExpressionNode SelectStatement():
-{}
+{ExpressionNode select, order;}
 {
-    SelectWithoutOrder()
-    [ OrderByClause() ]
+    select = SelectWithoutOrder()
+    [ order = OrderByClause() ]
+    {return select;}
 }
 
 ExpressionNode SelectWithoutOrder():
-{}
+{ExpressionNode first, next;
+ int connection = -1;}
 {
-    SelectSet() ((("UNION" ["ALL"]) | "INTERSECT" | "MINUS") SelectSet())*
+    first = SelectSet() ((("UNION" {connection = 1;} ["ALL" {connection = 1;}]) | "INTERSECT" {connection = 3;} | "MINUS" {connection = 4;}) SelectSet())*
+    { return first; }
 }
 
 ExpressionNode SelectSet():
-{}
+{ExpressionNode select; }
 {
-    Select() | "(" SubQuery() ")"
+    select = Select() | "(" select = SubQuery() ")"
+    { return select; }
 }
 
 ExpressionNode Select():
-{}
+{ from, where;}
 {
     "SELECT" [ "ALL" | "DISTINCT" | "UNIQUE" ] SelectList()
-    [IntoClause()]
-    FromClause()
-    [ WhereClause() ]
+    from = FromClause()
+    [ where = WhereClause() ]
+    { return nextOf()}
 }
 
-ExpressionNode SelectList():
+void SelectList():
 {}
 {
     "*" | SelectItem() ("," SelectItem())*
@@ -637,7 +649,7 @@ ExpressionNode DatetimeField():
     <S_IDENTIFIER>
 }
 
-CharSequence ObjectReference():
+ExpressionNode ObjectReference():
 {
     CharSequence s;
     StringBuilder name = new StringBuilder();
