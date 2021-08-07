@@ -29,21 +29,51 @@ import java.util.Deque;
 
 public class Parser
 {
-  private ObjectPool<ExpressionNode> sqlNodePool = new ObjectPool<ExpressionNode>(ExpressionNode.FACTORY, 100);
-  private final Deque<ExpressionNode> stack = new ArrayDeque<>();
+    private ObjectPool<ExpressionNode> sqlNodePool = new ObjectPool<ExpressionNode>(ExpressionNode.FACTORY, 100);
+    private final Deque<ExpressionNode> stack = new ArrayDeque<>();
 
-  public static ExpressionNode parse(String args) throws Exception {
-    Parser parse = new Parser(new java.io.StringReader(args));
-    ExpressionNode rst = parse.SQLStatement();
-    return rst;
-  }
+    public static ExpressionNode parse(String args) throws Exception {
+        Parser parse = new Parser(args);
+        parse.SQLStatement();
+        return parse.stack.pop();
+    }
 
-  public ExpressionNode collapseFunctionRightLeft(CharSequence name, ExpressionNode r, ExpressionNode l, Token token) {
-    ExpressionNode parent = sqlNodePool.next().of(ExpressionNode.FUNCTION, name, Integer.MIN_VALUE, token.beginColumn);
-    parent.rhs = r;
-    parent.lhs = l;
-    return parent;
-  }
+    private void push(int type, Token token) {
+        ExpressionNode newNode = sqlNodePool.next().of(type, token.image, Integer.MIN_VALUE, token.beginColumn);
+        stack.push(newNode);
+    }
+
+
+    private void push(int type, CharSequence token, int position) {
+        ExpressionNode newNode = sqlNodePool.next().of(type, token, Integer.MIN_VALUE, position);
+        stack.push(newNode);
+    }
+
+    private void pop(int type, CharSequence token, int position) {
+        pop(type, token, position, stack.size());
+    }
+
+    private void pop(int type, CharSequence token, int position, int parameters) {
+        ExpressionNode newNode = sqlNodePool.next().of(type, token, Integer.MIN_VALUE, position);
+        assert stack.size() >= parameters;
+        switch(parameters) {
+            case 0:
+                break;
+            case 1:
+                newNode.rhs = stack.pop();
+                break;
+            case 2:
+                newNode.rhs = stack.pop();
+                newNode.lhs = stack.pop();
+                break;
+            default:
+               for (int i = 0; i < parameters; i++) {
+                   newNode.args.add(stack.pop());
+               }
+               break;
+        }
+        stack.push(newNode);
+    }
 }
 
 PARSER_END(Parser)
@@ -146,14 +176,14 @@ TOKEN:
   | < S_QUOTED_IDENTIFIER: "\"" (~["\n","\r","\""])* "\"" >
 }
 
-ExpressionNode BindVariable():
+void BindVariable():
 {}
 {
     <S_BIND>
   | "$" (<S_NUMBER> | <S_IDENTIFIER>)
 }
 
-ExpressionNode BasicDataTypeDefinition():
+void BasicDataTypeDefinition():
 {}
 {
      "BOOLEAN"
@@ -172,13 +202,12 @@ ExpressionNode BasicDataTypeDefinition():
     |   "LONG256"
 }
 
-ExpressionNode SQLStatement():
+void SQLStatement():
 {}
 {
-    e = InsertStatement()
+    InsertStatement()
     |
-    e = QueryStatement()
-    { return e; }
+    QueryStatement()
 }
 
 void InsertStatement():
@@ -192,42 +221,41 @@ void InsertStatement():
     ";"
 }
 
-ExpressionNode QueryStatement():
-{ExpressionNode e;}
+void QueryStatement():
+{}
 {
-    e = SelectStatement()
+    SelectStatement()
     ";"
-    {return e;}
+    {}
 }
 
 void SqlExpression():
 {}
 {
-    r = SqlAndExpression() ("OR" l = SqlAndExpression() {
-        ExpressionNode r1 = sqlNodePool.next().of(ExpressionNode.FUNCTION, "OR", Integer.MIN_VALUE, token.beginColumn);
-        r1.rhs = r;
-        r1.lhs = l;
-        r = r1;
+    SqlAndExpression() ("OR" SqlAndExpression() {
+        pop(ExpressionNode.FUNCTION, "OR", token.beginColumn, 2);
     })*
-    { return jjtThis; }
 }
 
-ExpressionNode SqlAndExpression():
-{ExpressionNode r, l;}
-{
-    r = SqlUnaryLogicalExpression() ( "AND" l = SqlUnaryLogicalExpression() {
-        r = collapseFunctionRightLeft("AND", r, l, token);
-    })*
-    { return r; }
-}
-
-ExpressionNode SqlUnaryLogicalExpression():
+void SqlAndExpression():
 {}
 {
-  ["NOT"] SqlRelationalExpression()
+    SqlUnaryLogicalExpression() ( "AND" SqlUnaryLogicalExpression() {
+        pop(ExpressionNode.FUNCTION, "AND", token.beginColumn, 2);
+    })*
 }
 
-ExpressionNode SqlRelationalExpression():
+void SqlUnaryLogicalExpression():
+{ boolean inverted = false; }
+{
+  ["NOT" {inverted = true;}] SqlRelationalExpression() {
+    if (inverted) {
+        pop(ExpressionNode.FUNCTION, "NOT", token.beginColumn, 1);
+    }
+  }
+}
+
+void SqlRelationalExpression():
 {}
 {
     SqlSimpleExpression()
@@ -244,82 +272,82 @@ ExpressionNode SqlRelationalExpression():
    )?
 }
 
-ExpressionNode SqlExpressionList():
+void SqlExpressionList():
 {}
 {
     SqlExpression() ("," SqlExpression())*
 }
 
-ExpressionNode SqlInClause():
+void SqlInClause():
 {}
 {
     ["NOT"] "IN" "(" SqlExpressionList()")"
 }
 
-ExpressionNode SqlBetweenClause():
+void SqlBetweenClause():
 {}
 {
     ["NOT"] "BETWEEN" SqlSimpleExpression() "AND" SqlSimpleExpression()
 }
 
-ExpressionNode SqlLikeClause():
+void SqlLikeClause():
 {}
 {
     ["NOT"] "LIKE" SqlSimpleExpression()
 }
 
-ExpressionNode IsNullClause():
+void IsNullClause():
 {}
 {
     "IS" ["NOT"] "NULL"
 }
 
-ExpressionNode SqlSimpleExpression():
+void SqlSimpleExpression():
 {}
 {
     SqlMultiplicativeExpression() ( ("+" | "-" | "||")
-                                 SqlMultiplicativeExpression()
+                                 SqlMultiplicativeExpression() { pop(ExpressionNode.FUNCTION, token.image, token.beginColumn, 2); }
                                )*
 }
 
-ExpressionNode SqlMultiplicativeExpression():
+void SqlMultiplicativeExpression():
 {}
 {
-    SqlUnaryExpression() ( LOOKAHEAD(1) ("*" | "/" | ID("MOD")) SqlUnaryExpression())*
+    SqlUnaryExpression() ( LOOKAHEAD(1) ("*" | "/" | ID("MOD")) SqlUnaryExpression() { pop(ExpressionNode.FUNCTION, token.image, token.beginColumn, 2); })*
 }
 
-ExpressionNode SqlUnaryExpression():
-{}
+void SqlUnaryExpression():
+{boolean hasMinus = false;}
 {
-    (("+" | "-") SqlPrimaryExpression())
-|
-    SqlPrimaryExpression()
+    (("+" | "-" {hasMinus = true;}) SqlPrimaryExpression(hasMinus))
+    |
+    SqlPrimaryExpression(false)
 }
 
-ExpressionNode SqlPrimaryExpression():
+void SqlPrimaryExpression(boolean hasMinus):
 {}
 {
-    <S_NUMBER>
-  | <S_CHAR_LITERAL>
-  | "NULL"
+    <S_NUMBER> { push(ExpressionNode.LITERAL, token);}
+  | <S_CHAR_LITERAL> { push(ExpressionNode.LITERAL, token);}
+  | "NULL" { push(ExpressionNode.LITERAL, token);}
   | SqlCaseExpression()
   | "(" (LOOKAHEAD(3) SelectStatement() | SqlExpression()) ")"
-  | BindVariable()
+  | BindVariable() { push(ExpressionNode.BIND_VARIABLE, token); }
   | LOOKAHEAD(2) SqlCastExpression()
   | LOOKAHEAD(IntervalExpression()) IntervalExpression()
-  | LOOKAHEAD(2) (<S_IDENTIFIER> | "SQL") "%" ID("FOUND|NOTFOUND|ISOPEN|ROWCOUNT")
   | LOOKAHEAD(FunctionReference() "(") FunctionCall()
   | ObjectReference() // Might be a call to a parameter-less function.
 }
 
-ExpressionNode SqlCaseExpression():
-{}
+void SqlCaseExpression():
+{int paramCount = 1;}
 {
-    "CASE" (SqlSimpleExpression() ("WHEN" SqlSimpleExpression() "THEN" SqlSimpleExpression())*
-            | ("WHEN" SqlExpression() "THEN" SqlSimpleExpression())*
+    "CASE" (SqlSimpleExpression() ("WHEN" SqlSimpleExpression() "THEN" SqlSimpleExpression() { paramCount+=2; })*
+            | ("WHEN" SqlExpression() "THEN" SqlSimpleExpression() { paramCount+=2; })*
            )
-    ["ELSE" SqlSimpleExpression()]
+    ["ELSE" SqlSimpleExpression(){ paramCount++; }]
     "END"
+    {pop(ExpressionNode.FUNCTION, "CASE", token.beginCoumn, paramCount);}
 }
 
 void SqlCastExpression():
@@ -328,13 +356,13 @@ void SqlCastExpression():
     "CAST" "(" SqlExpression() "AS" BasicDataTypeDefinition() ")"
 }
 
-ExpressionNode TableColumn():
+void TableColumn():
 {}
 {
     ObjectReference()
 }
 
-ExpressionNode ObjectName():
+void ObjectName():
 {}
 {
     <S_IDENTIFIER>          {
@@ -355,7 +383,7 @@ CharSequence TNSName():
     {return name.toString();}
 }
 
-ExpressionNode Relop():
+void Relop():
 {}
 {
     "="
@@ -368,9 +396,8 @@ ExpressionNode Relop():
   | "<"
 }
 
-ExpressionNode TableName():
+void TableName():
 {
-    ExpressionNode e;
 }
 {
     // table
@@ -378,67 +405,62 @@ ExpressionNode TableName():
     { return e; }
 }
 
-ExpressionNode ParameterList():
+void ParameterList():
 {}
 {
     Parameter() ( "," Parameter() )*
 }
 
-ExpressionNode NumOrID():
+void NumOrID():
 {}
 {
     <S_IDENTIFIER> | (["+" | "-"] <S_NUMBER>)
 }
 
-ExpressionNode Parameter():
+void Parameter():
 {}
 {
     <S_IDENTIFIER> [ ["IN"] ["OUT"] BasicDataTypeDefinition()
                              [(":=" | "DEFAULT" ) SqlExpression()] ]
 }
 
-ExpressionNode Arguments():
+void Arguments():
 {}
 {
     Argument() ("," Argument())*
 }
 
-ExpressionNode Argument():
+void Argument():
 {}
 {
     [LOOKAHEAD(2) <S_IDENTIFIER> "=>"] SqlExpression()
 }
 
-ExpressionNode SelectStatement():
-{ExpressionNode select, order;}
+void SelectStatement():
+{}
 {
-    select = SelectWithoutOrder()
-    [ order = OrderByClause() ]
-    {return select;}
+    SelectWithoutOrder()
+    [ OrderByClause() ]
 }
 
-ExpressionNode SelectWithoutOrder():
-{ExpressionNode first, next;
- int connection = -1;}
+void SelectWithoutOrder():
+{}
 {
-    first = SelectSet() ((("UNION" {connection = 1;} ["ALL" {connection = 1;}]) | "INTERSECT" {connection = 3;} | "MINUS" {connection = 4;}) SelectSet())*
-    { return first; }
+    first = SelectSet() ((("UNION"  ["ALL"]) | "INTERSECT" | "MINUS") SelectSet())*
 }
 
-ExpressionNode SelectSet():
-{ExpressionNode select; }
+void SelectSet():
+{}
 {
-    select = Select() | "(" select = SubQuery() ")"
-    { return select; }
+    Select() | "(" select = SubQuery() ")"
 }
 
-ExpressionNode Select():
-{ from, where;}
+void Select():
+{}
 {
     "SELECT" [ "ALL" | "DISTINCT" | "UNIQUE" ] SelectList()
-    from = FromClause()
-    [ where = WhereClause() ]
-    { return nextOf()}
+    FromClause()
+    [ WhereClause() ]
 }
 
 void SelectList():
@@ -447,7 +469,7 @@ void SelectList():
     "*" | SelectItem() ("," SelectItem())*
 }
 
-ExpressionNode SelectItem():
+void SelectItem():
 {}
 {
     (
@@ -458,7 +480,7 @@ ExpressionNode SelectItem():
     [ [ "AS" ] SelectItemAlias()]
 }
 
-ExpressionNode SelectItemAlias():
+void SelectItemAlias():
 {}
 {
     ObjectName()
@@ -466,25 +488,25 @@ ExpressionNode SelectItemAlias():
   | "RETURNING" | "WHEN"
 }
 
-ExpressionNode AnalyticFunction():
+void AnalyticFunction():
 {}
 {
     FunctionCall() [ "OVER" "(" AnalyticClause() ")" ]
 }
 
-ExpressionNode AnalyticClause():
+void AnalyticClause():
 {}
 {
     [ QueryPartitionClause() ] [ OrderByClause() [ WindowingClause() ] ]
 }
 
-ExpressionNode QueryPartitionClause():
+void QueryPartitionClause():
 {}
 {
     "PARTITION" "BY" SqlExpression() ( "," SqlExpression() )*
 }
 
-ExpressionNode WindowingClause():
+void WindowingClause():
 {}
 {
     ("ROWS" | "RANGE")
@@ -499,32 +521,32 @@ ExpressionNode WindowingClause():
     )
 }
 
-ExpressionNode IntoClause():
+void IntoClause():
 {}
 {
    "INTO" DataItem() ("," DataItem())*
 }
 
-ExpressionNode DataItem():
+void DataItem():
 {}
 {
     (<S_IDENTIFIER> ["." <S_IDENTIFIER>] | BindVariable())
     [ "(" SqlSimpleExpression() ")" ] // collection subscript
 }
 
-ExpressionNode FromClause():
+void FromClause():
 {}
 {
     "FROM" TableReference() ( "," TableReference())*
 }
-ExpressionNode TableReference():
+void TableReference():
 {}
 {
     "ONLY" "(" QueryTableExpression() ")"
   | QueryTableExpression()
 }
 
-ExpressionNode QueryTableExpression():
+void QueryTableExpression():
 {}
 {
     (TableName() // might also be a query name
@@ -539,44 +561,44 @@ ExpressionNode QueryTableExpression():
     (Join())*
 }
 
-ExpressionNode TableCollectionExpression():
+void TableCollectionExpression():
 {}
 {
     "TABLE" "(" SqlSimpleExpression() ")" [ "(" "+" ")" ]
 }
 
-ExpressionNode Join():
+void Join():
 {}
 {
     JoinType() ID("JOIN") TableReference() ("ON" SqlExpression())
 }
 
-ExpressionNode JoinType():
+void JoinType():
 {}
 {
     "INNER"
   | ("LEFT" | "RIGHT" | "FULL") ID("OUTER")
 }
 
-ExpressionNode ColumnName():
+void ColumnName():
 {}
 {
     <S_IDENTIFIER>
 }
 
-ExpressionNode WhereClause():
+void WhereClause():
 {}
 {
     "WHERE" SqlExpression()
 }
 
-ExpressionNode OrderByClause():
+void OrderByClause():
 {}
 {
     "ORDER" "BY" OrderByExpression() ("," OrderByExpression())*
 }
 
-ExpressionNode OrderByExpression():
+void OrderByExpression():
 {}
 {
     SqlSimpleExpression()
@@ -584,13 +606,13 @@ ExpressionNode OrderByExpression():
     ["NULLS" ID("LAST")]
 }
 
-ExpressionNode ExistsClause():
+void ExistsClause():
 {}
 {
     ["NOT"] "EXISTS" "(" SubQuery() ")"
 }
 
-ExpressionNode IntervalExpression():
+void IntervalExpression():
 {}
 {
     ID("INTERVAL") SqlSimpleExpression()
@@ -600,7 +622,7 @@ ExpressionNode IntervalExpression():
     )
 }
 
-ExpressionNode FunctionCall():
+void FunctionCall():
 {}
 {
     FunctionReference() (
@@ -612,7 +634,7 @@ ExpressionNode FunctionCall():
     // but this parser allows their use with any function.
 }
 
-ExpressionNode FunctionReference():
+void FunctionReference():
 {
     CharSequence name;
 }
@@ -621,19 +643,19 @@ ExpressionNode FunctionReference():
     {functions.add(name.toUpperCase());}
 }
 
-ExpressionNode FunctionArgumentList():
+void FunctionArgumentList():
 {}
 {
     FunctionArgument() ("," FunctionArgument())*
 }
 
-ExpressionNode FunctionArgument():
+void FunctionArgument():
 {}
 {
     [LOOKAHEAD(2) <S_IDENTIFIER> "=>"] SqlExpression()
 }
 
-ExpressionNode TrimArguments():
+void TrimArguments():
 {}
 {
     "(" ( LOOKAHEAD({getToken(1).image.matches("(?i)LEADING|TRAILING|BOTH")})
@@ -643,13 +665,13 @@ ExpressionNode TrimArguments():
     ")"
 }
 
-ExpressionNode DatetimeField():
+void DatetimeField():
 {}
 {
     <S_IDENTIFIER>
 }
 
-ExpressionNode ObjectReference():
+void ObjectReference():
 {
     CharSequence s;
     StringBuilder name = new StringBuilder();
@@ -664,20 +686,20 @@ ExpressionNode ObjectReference():
     {return lastObjectReference = name.toString();}
 }
 
-ExpressionNode OuterJoinExpression():
+void OuterJoinExpression():
 {}
 {
     TableColumn() "(" "+" ")"
 }
 
-ExpressionNode SubQuery():
+void SubQuery():
 {}
 {
     SelectStatement()
 }
 
 /** Expect an <S_IDENTIFIER> with the given value. */
-ExpressionNode ID(String id):
+void ID(String id):
 {}
 {
     <S_IDENTIFIER>
