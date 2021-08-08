@@ -8,6 +8,7 @@ Options
 
 */
 options{
+    IGNORE_CASE=true ;
     MULTI=true;
     NODE_DEFAULT_VOID=true;
     JAVA_TEMPLATE_TYPE="modern" ;
@@ -31,18 +32,38 @@ public class Parser
 {
     private ObjectPool<ExpressionNode> sqlNodePool = new ObjectPool<ExpressionNode>(ExpressionNode.FACTORY, 100);
     private final Deque<ExpressionNode> stack = new ArrayDeque<>();
+    public ExpressionNode selectNode, fromNode, whereNode;
 
-    public static ExpressionNode parse(String args) throws Exception {
-        Parser parse = new Parser(args);
-        parse.SQLStatement();
-        return parse.stack.pop();
+    public Parser() {
+    }
+
+    public void parse(String args) throws Exception {
+        stack.clear();
+        selectNode = fromNode = whereNode = null;
+        ReInit(args);
+        SQLStatement();
+        stack.clear();
+    }
+
+    private void popSelect(String modifier) {
+        pop(ExpressionNode.QUERY, "SELECT", 0);
+        selectNode = stack.pop();
+    }
+
+    private void popFrom() {
+        pop(ExpressionNode.QUERY, "FROM", 0);
+        fromNode = stack.pop();
+    }
+
+    private void popWhere() {
+        pop(ExpressionNode.QUERY, "WHERE", 0);
+        whereNode = stack.pop();
     }
 
     private void push(int type, Token token) {
         ExpressionNode newNode = sqlNodePool.next().of(type, token.image, Integer.MIN_VALUE, token.beginColumn);
         stack.push(newNode);
     }
-
 
     private void push(int type, CharSequence token, int position) {
         ExpressionNode newNode = sqlNodePool.next().of(type, token, Integer.MIN_VALUE, position);
@@ -71,6 +92,15 @@ public class Parser
                    newNode.args.add(stack.pop());
                }
                break;
+        }
+        stack.push(newNode);
+    }
+
+    private void replace(int type, CharSequence token, int position, int parameters) {
+        ExpressionNode newNode = sqlNodePool.next().of(type, token, Integer.MIN_VALUE, position);
+        assert stack.size() >= parameters;
+        for(int i = 0; i < parameters; i++) {
+            stack.pop();
         }
         stack.push(newNode);
     }
@@ -140,10 +170,12 @@ TOKEN:
 |   <K_SELECT:"SELECT">
 |   <K_SET:"SET">
 |   <K_TABLE:"TABLE">
+|   <K_THEN:"THEN">
 |   <K_UNION:"UNION">
 |   <K_VALUES:"VALUES">
 |   <K_STRING:"STRING">
 |   <K_WHERE:"WHERE">
+|   <K_WHEN:"WHEN">
 |   <K_WITH:"WITH">
 }
 
@@ -186,7 +218,7 @@ void BindVariable():
 void BasicDataTypeDefinition():
 {}
 {
-     "BOOLEAN"
+    ( "BOOLEAN"
     |   "BYTE"
     |   "SHORT"
     |   "CHAR"
@@ -200,6 +232,8 @@ void BasicDataTypeDefinition():
     |   "DOUBLE"
     |   "BINARY"
     |   "LONG256"
+    )
+    {push(ExpressionNode.CONSTANT, token);}
 }
 
 void SQLStatement():
@@ -225,8 +259,7 @@ void QueryStatement():
 {}
 {
     SelectStatement()
-    ";"
-    {}
+    (";" | <EOF>)
 }
 
 void SqlExpression():
@@ -256,11 +289,13 @@ void SqlUnaryLogicalExpression():
 }
 
 void SqlRelationalExpression():
-{}
+{
+    String operation;
+}
 {
     SqlSimpleExpression()
 
-    ( Relop() SqlSimpleExpression()
+    ( Relop() { operation = token.image; } SqlSimpleExpression() { pop(ExpressionNode.OPERATION, operation, token.beginColumn, 2); }
       |
       LOOKAHEAD(2) SqlInClause()
       |
@@ -313,7 +348,7 @@ void SqlSimpleExpression():
 void SqlMultiplicativeExpression():
 {}
 {
-    SqlUnaryExpression() ( LOOKAHEAD(1) ("*" | "/" | ID("MOD")) SqlUnaryExpression() { pop(ExpressionNode.FUNCTION, token.image, token.beginColumn, 2); })*
+    SqlUnaryExpression() ( LOOKAHEAD(1) ("*" | "/") SqlUnaryExpression() { pop(ExpressionNode.FUNCTION, token.image, token.beginColumn, 2); })*
 }
 
 void SqlUnaryExpression():
@@ -340,20 +375,23 @@ void SqlPrimaryExpression(boolean hasMinus):
 }
 
 void SqlCaseExpression():
-{int paramCount = 1;}
+{int paramCount = 0;}
 {
-    "CASE" (SqlSimpleExpression() ("WHEN" SqlSimpleExpression() "THEN" SqlSimpleExpression() { paramCount+=2; })*
-            | ("WHEN" SqlExpression() "THEN" SqlSimpleExpression() { paramCount+=2; })*
-           )
-    ["ELSE" SqlSimpleExpression(){ paramCount++; }]
-    "END"
-    {pop(ExpressionNode.FUNCTION, "CASE", token.beginCoumn, paramCount);}
+//    <K_CASE> <K_WHEN> SqlExpression() <K_THEN> SqlSimpleExpression()
+//    ["ELSE" SqlSimpleExpression()]
+//    "END"
+     <K_CASE> ((SqlSimpleExpression() { paramCount = 1; } (<K_WHEN> SqlSimpleExpression() <K_THEN> SqlSimpleExpression() { paramCount+=2; })*)
+            | (<K_WHEN> SqlExpression() <K_THEN> SqlSimpleExpression() { paramCount+=2; })*)
+        [<K_ELSE> SqlSimpleExpression(){ paramCount++; }]
+        <K_END>
+        {pop(ExpressionNode.FUNCTION, "CASE", token.beginColumn, paramCount);}
 }
 
 void SqlCastExpression():
 {}
 {
     "CAST" "(" SqlExpression() "AS" BasicDataTypeDefinition() ")"
+    {pop(ExpressionNode.FUNCTION, "CAST", token.beginColumn, 2);}
 }
 
 void TableColumn():
@@ -366,10 +404,10 @@ void ObjectName():
 {}
 {
     <S_IDENTIFIER>          {
-        return nextOf(ExpressionNode.LITERAL, token.image, token.beginColumn);
+        push(ExpressionNode.LITERAL, token);
     }
     | <S_QUOTED_IDENTIFIER> {
-        return nextOf(ExpressionNode.LITERAL, token.image, token.beginColumn);
+        push(ExpressionNode.LITERAL, token.image.subSequence(1, token.image.length() - 1), token.beginColumn);
     }
 }
 
@@ -397,12 +435,10 @@ void Relop():
 }
 
 void TableName():
-{
-}
+{}
 {
     // table
-    e=ObjectName()
-    { return e; }
+    ObjectName()
 }
 
 void ParameterList():
@@ -444,23 +480,27 @@ void SelectStatement():
 }
 
 void SelectWithoutOrder():
-{}
+{ String operation; }
 {
-    first = SelectSet() ((("UNION"  ["ALL"]) | "INTERSECT" | "MINUS") SelectSet())*
+    SelectSet() ((("UNION"  { operation = "UNION"; }
+                            ["ALL" { operation = "UNION ALL"; } ] )
+     | "INTERSECT"  { operation = "INTERSECT";}
+     | "MINUS" { operation = "MINUS";} ) SelectSet()
+        { pop(ExpressionNode.SET_OPERATION,operation, token.beginColumn, 2);})*
 }
 
 void SelectSet():
 {}
 {
-    Select() | "(" select = SubQuery() ")"
+    Select() | "(" SubQuery() ")"
 }
 
 void Select():
-{}
+{ String modifier = null; }
 {
-    "SELECT" [ "ALL" | "DISTINCT" | "UNIQUE" ] SelectList()
-    FromClause()
-    [ WhereClause() ]
+    "SELECT" [ "ALL" | "DISTINCT" | "UNIQUE" {modifier = token.image;}] SelectList() { popSelect(modifier); }
+    FromClause() { popFrom(); }
+    [ WhereClause() { popWhere(); } ]
 }
 
 void SelectList():
@@ -625,22 +665,20 @@ void IntervalExpression():
 void FunctionCall():
 {}
 {
-    FunctionReference() (
-        LOOKAHEAD({"TRIM".equalsIgnoreCase(lastObjectReference)}) TrimArguments()
-      | LOOKAHEAD({"EXTRACT".equalsIgnoreCase(lastObjectReference)}) "(" DatetimeField() "FROM" SqlSimpleExpression() ")"
-      | [ "(" [["ALL" | "DISTINCT" | "UNIQUE"] (FunctionArgumentList() | "*")] ")" ]
-    )
+    FunctionReference()
+//    (
+//        LOOKAHEAD({"TRIM".equalsIgnoreCase(lastObjectReference)}) TrimArguments()
+//      | LOOKAHEAD({"EXTRACT".equalsIgnoreCase(lastObjectReference)}) "(" DatetimeField() "FROM" SqlSimpleExpression() ")"
+//      | [ "(" [["ALL" | "DISTINCT" | "UNIQUE"] (FunctionArgumentList() | "*")] ")" ]
+//    )
     // "all/distinct/unique/*" are permitted only with aggregate functions,
     // but this parser allows their use with any function.
 }
 
 void FunctionReference():
+{}
 {
-    CharSequence name;
-}
-{
-    name = ObjectReference()
-    {functions.add(name.toUpperCase());}
+    ObjectReference()
 }
 
 void FunctionArgumentList():
@@ -673,17 +711,17 @@ void DatetimeField():
 
 void ObjectReference():
 {
-    CharSequence s;
-    StringBuilder name = new StringBuilder();
+    int paramCount = 1;
+    String literal0 = null;
 }
 {
-    s=ObjectName()       {name.append(s);}
-    [ "." s=ObjectName() {name.append(".").append(s);}
-    [ "." s=ObjectName() {name.append(".").append(s);}
+    ObjectName()     { literal0 = token.image; }
+    [ "." ObjectName() { literal0 += "." + token.image; paramCount++; }
+    [ "." ObjectName() { literal0 += "." + token.image; paramCount++; }
     ]]
-    [ "@" ("!" | s=TNSName()   {name.append("@").append(s);} )] // remote reference
-    // The @! idiom is undocumented, but accepted by Oracle software.
-    {return lastObjectReference = name.toString();}
+    {if (paramCount == 2) {
+        replace(ExpressionNode.LITERAL, literal0, token.beginColumn, paramCount);
+    }}
 }
 
 void OuterJoinExpression():

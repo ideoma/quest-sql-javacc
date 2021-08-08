@@ -2,8 +2,8 @@ import parse.ParseException;
 import parse.Parser;
 
 public class Main {
-    public static void main(String[] args) throws ParseException {
-        Parser p = new Parser(new java.io.StringReader("SELECT a.b FROM asfda a where 1 = 2"));
-        System.out.println(p.Query());
+    public static void main(String[] args) throws Exception {
+        Parser p = new Parser();
+        p.parse("SELECT a.b FROM asfda WHERE 1 = 2");
     }
 }
